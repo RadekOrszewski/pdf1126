@@ -11,31 +11,62 @@
   :root {
     --bg: #0f1117; --panel: #181b24; --border: #2a2f3d; --text: #e4e6eb; --muted: #8b92a5;
     --s: #4fc3f7; --m: #ffb74d; --l: #ef5350;
-    --p50: #81c784; --p85: #ffd54f; --p95: #f06292;
+    --p50: #81c784; --p85: #ffd54f; --p95: #f06292; --avg: #b39ddb; --accent: #7c8cff;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header { padding: 24px 32px 8px; }
   h1 { margin: 0 0 4px; font-size: 1.6rem; font-weight: 600; }
+  h2 { margin: 0 0 12px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
   header p { margin: 0; color: var(--muted); }
   main { padding: 16px 32px 32px; display: grid; gap: 16px; }
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 32px; align-items: center; }
-  .controls .title { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
+  .title { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
   .sizes { display: flex; gap: 8px; }
   .size-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; user-select: none; }
   .size-btn input { margin: 0; }
-  .size-btn .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
   .range-wrap { min-width: 320px; flex: 1; }
-  input[type=range] { width: 100%; accent-color: #7c8cff; }
-  .range-value { font-weight: 600; }
+  .dual { position: relative; height: 28px; }
+  .dual .track { position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--border); }
+  .dual .fill { position: absolute; top: 12px; height: 4px; border-radius: 2px; background: var(--accent); }
+  .dual input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 28px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+  .dual input[type=range]::-webkit-slider-runnable-track { background: none; }
+  .dual input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--text); cursor: pointer; }
+  .dual input[type=range]::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid var(--text); cursor: pointer; }
+  .dual input[type=range]::-moz-range-track { background: none; }
+  .range-value { font-weight: 600; margin-top: 6px; }
   .range-sub { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  button { font: inherit; font-size: .85rem; color: var(--text); background: #232838; border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0f1117; font-weight: 600; }
+  button.danger { border-color: var(--l); color: var(--l); }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
   .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; border-left: 4px solid var(--c); }
+  .stat.off { opacity: .4; }
   .stat .lbl { color: var(--muted); font-size: .85rem; }
   .stat .val { font-size: 2rem; font-weight: 700; margin-top: 4px; }
   .stat .val small { font-size: .9rem; font-weight: 400; color: var(--muted); }
   .chart-box { position: relative; height: 520px; }
+  .chart-box.small { height: 260px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
+  .toolbar .hint { color: var(--muted); font-size: .85rem; margin-left: auto; }
+  .toolbar label { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; cursor: pointer; }
+  #selRect { position: absolute; border: 1px dashed var(--accent); background: rgba(124, 140, 255, .15); pointer-events: none; display: none; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
+  form.add { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  form.add label { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); }
+  form.add input, form.add select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color-scheme: dark; }
+  form.add input[type=number] { width: 90px; }
+  .form-msg { font-size: .85rem; margin-top: 8px; min-height: 1.2em; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .scroll { max-height: 260px; overflow: auto; }
+  .muted { color: var(--muted); }
   .error { color: var(--l); }
   footer { color: var(--muted); font-size: .8rem; padding: 0 32px 24px; }
 </style>
@@ -43,7 +74,7 @@
 <body>
 <header>
   <h1>Czasy realizacji 2024-25</h1>
-  <p>Scatterplot czasów realizacji z percentylami (prognoza „w ciągu X dni”).</p>
+  <p>Scatterplot czasów realizacji z percentylami (prognoza „w ciągu X dni”) i średnimi.</p>
 </header>
 <main>
   <section class="panel controls">
@@ -52,10 +83,20 @@
       <div class="sizes" id="sizes"></div>
     </div>
     <div class="range-wrap">
-      <label class="title" for="period">Okres do wyznaczenia prognozy</label>
-      <input type="range" id="period" min="3" max="3" step="3" value="3">
-      <div><span class="range-value" id="periodLabel"></span></div>
+      <span class="title">Okres do wyznaczenia prognozy (początek – koniec)</span>
+      <div class="dual">
+        <div class="track"></div><div class="fill" id="rangeFill"></div>
+        <input type="range" id="periodFrom" min="0" max="0" step="1" value="0" aria-label="Początek okresu">
+        <input type="range" id="periodTo" min="0" max="0" step="1" value="0" aria-label="Koniec okresu">
+      </div>
+      <div class="range-value" id="periodLabel"></div>
       <div class="range-sub" id="periodSub"></div>
+      <div class="presets" id="presets">
+        <button type="button" data-months="3">Ostatnie 3 mies.</button>
+        <button type="button" data-months="6">Ostatnie 6 mies.</button>
+        <button type="button" data-months="12">Ostatnie 12 mies.</button>
+        <button type="button" data-months="0">Cały okres</button>
+      </div>
     </div>
   </section>
 
@@ -63,22 +104,55 @@
     <div class="stat" style="--c: var(--p50)"><div class="lbl">50. percentyl</div><div class="val" id="p50">–</div></div>
     <div class="stat" style="--c: var(--p85)"><div class="lbl">85. percentyl</div><div class="val" id="p85">–</div></div>
     <div class="stat" style="--c: var(--p95)"><div class="lbl">95. percentyl</div><div class="val" id="p95">–</div></div>
-    <div class="stat" style="--c: #7c8cff"><div class="lbl">Liczba elementów</div><div class="val" id="count">–</div></div>
+    <div class="stat" style="--c: var(--avg)"><div class="lbl">Średni czas realizacji</div><div class="val" id="avg">–</div></div>
+    <div class="stat" style="--c: var(--accent)"><div class="lbl">Liczba elementów</div><div class="val" id="count">–</div></div>
   </section>
+  <section class="stats" id="sizeStats"></section>
 
   <section class="panel">
-    <div class="chart-box"><canvas id="chart"></canvas></div>
+    <div class="toolbar">
+      <label><input type="checkbox" id="showAvg" checked> Pokaż średnie na wykresie</label>
+      <button type="button" class="danger" id="deleteSel" disabled>Usuń zaznaczone (0)</button>
+      <button type="button" id="clearSel" disabled>Wyczyść zaznaczenie</button>
+      <span class="hint">Kliknij punkt, aby go zaznaczyć/odznaczyć. Przeciągnij, aby zaznaczyć obszar (Shift – dodaj do zaznaczenia). Delete – usuń.</span>
+    </div>
+    <div class="chart-box" id="chartBox"><canvas id="chart"></canvas><div id="selRect"></div></div>
     <div id="msg"></div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <h2>Średni czas realizacji wg rozmiaru (wybrany okres)</h2>
+      <div class="chart-box small"><canvas id="avgChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Dodaj punkt danych</h2>
+      <form class="add" id="addForm">
+        <label>Rozmiar <select id="addSize" required></select></label>
+        <label>Czas realizacji (dni) <input type="number" id="addLead" min="0" step="1" required></label>
+        <label>Data ukończenia <input type="date" id="addDate" required></label>
+        <button type="submit" class="primary">Dodaj</button>
+      </form>
+      <div class="form-msg" id="addMsg"></div>
+      <h2 style="margin-top: 16px">Usunięte punkty</h2>
+      <div class="toolbar">
+        <button type="button" id="restoreAll" disabled>Przywróć wszystkie</button>
+        <span class="muted" id="deletedInfo"></span>
+      </div>
+      <div class="scroll"><table id="deletedTable"></table></div>
+    </div>
   </section>
 </main>
 <footer>
-  Źródło: <code>Lead Times - 2024-25 (7).xlsx</code>. Okres liczony wstecz od najnowszej daty ukończenia.
+  Źródło: <code>Lead Times - 2024-25 (7).xlsx</code> + punkty dodane ręcznie (▲). Ręczne zmiany (dodane i usunięte punkty) są zapisywane w przeglądarce.
   Percentyle z interpolacją liniową (jak PERCENTYL.PRZEDZ.ZAMK w Excelu), zaokrąglone w górę do pełnych dni. Punkty poza wybranym okresem są wyszarzone.
 </footer>
 
 <script>
 const DATA_FILE = 'Lead Times - 2024-25 (7).xlsx';
+const STORAGE_KEY = 'lt-dashboard-v1';
 const SIZES = ['S', 'M', 'L'];
+const DAY = 86400000;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const SIZE_COLORS = { S: css('--s'), M: css('--m'), L: css('--l') };
 const MONTHS = {
@@ -86,12 +160,14 @@ const MONTHS = {
   sierpnia: 7, września: 8, wrzesnia: 8, października: 9, pazdziernika: 9, listopada: 10, grudnia: 11
 };
 
-let items = [];
-let chart, minDate, maxDate;
+let items = [];               // all points: { id, date, size, lead, manual }
+const deleted = new Set();    // ids of removed points
+const selected = new Set();   // ids of points selected on the chart
+let chart, avgChart, minDate, maxDate;
 
 function parseDate(v) {
   if (v instanceof Date) return v;
-  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400000)); // Excel serial date
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * DAY)); // Excel serial date
   if (typeof v !== 'string') return null;
   const m = v.trim().match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/);
   if (m) {
@@ -108,13 +184,18 @@ function percentile(sorted, p) {
   const lo = Math.floor(idx), hi = Math.ceil(idx);
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
+const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
+const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const addMonths = (d, n) => { const r = new Date(d); r.setMonth(r.getMonth() + n); return r; };
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const dayIndex = d => Math.round((startOfDay(d) - minDate) / DAY);
 const fmtDate = d => d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
-const monthsSpan = (a, b) => (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + (b.getDate() > a.getDate() ? 1 : 0);
+const fmtShort = d => d.toLocaleDateString('pl-PL');
+const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtNum = v => v == null ? '–' : v.toLocaleString('pl-PL', { maximumFractionDigits: 1 });
 
-async function load() {
+async function loadFile() {
   const res = await fetch(encodeURI(DATA_FILE));
   if (!res.ok) throw new Error(`Nie udało się pobrać pliku ${DATA_FILE} (${res.status})`);
   const wb = XLSX.read(await res.arrayBuffer(), { cellDates: true });
@@ -122,58 +203,190 @@ async function load() {
   const head = rows[0].map(h => String(h || '').toLowerCase());
   const col = (re, def) => { const i = head.findIndex(h => re.test(h)); return i >= 0 ? i : def; };
   const cDate = col(/data/, 0), cSize = col(/rozmiar/, 1), cLead = col(/czas/, 2);
+  const seen = {};
   return rows.slice(1).map(r => ({
     date: parseDate(r[cDate]),
     size: String(r[cSize] || '').trim().toUpperCase(),
     lead: Number(r[cLead])
-  })).filter(r => r.date && SIZES.includes(r.size) && isFinite(r.lead));
+  })).filter(r => r.date && SIZES.includes(r.size) && isFinite(r.lead)).map(r => {
+    r.date = startOfDay(r.date);
+    // Stable id (content + occurrence) so deletions persist across reloads.
+    const key = `f:${isoDay(r.date)}:${r.size}:${r.lead}`;
+    seen[key] = (seen[key] || 0) + 1;
+    return { ...r, id: `${key}:${seen[key]}`, manual: false };
+  });
 }
 
+function loadState() {
+  try {
+    const st = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const manual = (st.manual || []).map(m => ({ id: m.id, size: m.size, lead: +m.lead, date: parseDate(m.date), manual: true }))
+      .filter(m => m.date && SIZES.includes(m.size) && isFinite(m.lead));
+    return { manual, deleted: st.deleted || [] };
+  } catch { return { manual: [], deleted: [] }; }
+}
+
+function saveState() {
+  const manual = items.filter(i => i.manual).map(i => ({ id: i.id, size: i.size, lead: i.lead, date: isoDay(i.date) }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ manual, deleted: [...deleted] }));
+}
+
+const active = () => items.filter(i => !deleted.has(i.id));
 const selectedSizes = () => SIZES.filter(s => document.getElementById('size-' + s).checked);
+const sliders = () => [document.getElementById('periodFrom'), document.getElementById('periodTo')];
+
+// Recomputes the date domain; keeps the selected window, following the edges if they were at the edges.
+function refreshDomain() {
+  const [fromEl, toEl] = sliders();
+  const oldMax = +fromEl.max;
+  const atStart = +fromEl.value === 0, atEnd = +toEl.value === oldMax;
+  const prevFrom = minDate ? addDays(minDate, +fromEl.value) : null;
+  const prevTo = minDate ? addDays(minDate, +toEl.value) : null;
+
+  const src = items.length ? items : [{ date: startOfDay(new Date()) }];
+  minDate = new Date(Math.min(...src.map(i => i.date)));
+  maxDate = new Date(Math.max(...src.map(i => i.date)));
+  const max = dayIndex(maxDate);
+  for (const el of [fromEl, toEl]) el.max = max;
+  const clamp = v => Math.max(0, Math.min(max, v));
+  fromEl.value = !prevFrom || atStart ? 0 : clamp(dayIndex(prevFrom));
+  toEl.value = !prevTo || atEnd ? max : clamp(dayIndex(prevTo));
+
+  if (chart) {
+    chart.options.scales.x.min = addDays(minDate, -7);
+    chart.options.scales.x.max = addDays(maxDate, 7);
+  }
+}
+
+function getWindow() {
+  const [fromEl, toEl] = sliders();
+  const a = +fromEl.value, b = +toEl.value;
+  return { fromIdx: a, toIdx: b, from: addDays(minDate, a), to: addDays(minDate, b) };
+}
 
 function update() {
   const sizes = selectedSizes();
-  const slider = document.getElementById('period');
-  const months = +slider.value;
-  const isAll = months >= +slider.max;
-  const from = isAll ? minDate : addMonths(maxDate, -months);
+  const [fromEl, toEl] = sliders();
+  const { fromIdx, toIdx, from, to } = getWindow();
+  const max = +fromEl.max || 1;
 
-  document.getElementById('periodLabel').textContent = isAll ? 'Cały okres' : `Ostatnie ${months} mies.`;
-  document.getElementById('periodSub').textContent = `${fmtDate(from)} – ${fmtDate(maxDate)}`;
+  const fill = document.getElementById('rangeFill');
+  fill.style.left = (fromIdx / max * 100) + '%';
+  fill.style.width = ((toIdx - fromIdx) / max * 100) + '%';
+  const isAll = fromIdx === 0 && toIdx === +fromEl.max;
+  const days = toIdx - fromIdx + 1;
+  document.getElementById('periodLabel').textContent = isAll ? `Cały okres (${days} dni)` : `Wybrany okres: ${days} dni`;
+  document.getElementById('periodSub').textContent = `${fmtDate(from)} – ${fmtDate(to)}`;
 
-  const inWindow = i => i.date >= from && i.date <= maxDate;
-  const used = items.filter(i => sizes.includes(i.size) && inWindow(i));
-  const sorted = used.map(i => i.lead).sort((a, b) => a - b);
+  const inWindow = i => { const d = dayIndex(i.date); return d >= fromIdx && d <= toIdx; };
+  const live = active();
+  const inWin = live.filter(inWindow);
+  const used = inWin.filter(i => sizes.includes(i.size));
+  const leads = used.map(i => i.lead);
+  const sorted = [...leads].sort((a, b) => a - b);
   const p = { p50: percentile(sorted, .5), p85: percentile(sorted, .85), p95: percentile(sorted, .95) };
+  const avg = mean(leads);
 
   for (const k of Object.keys(p)) {
     document.getElementById(k).innerHTML = p[k] == null ? '–' : `${Math.ceil(p[k])} <small>dni</small>`;
   }
+  document.getElementById('avg').innerHTML = avg == null ? '–' : `${fmtNum(avg)} <small>dni</small>`;
   document.getElementById('count').textContent = used.length;
+
+  const sizeAvg = {};
+  for (const s of SIZES) {
+    const l = inWin.filter(i => i.size === s).map(i => i.lead);
+    sizeAvg[s] = { avg: mean(l), n: l.length };
+  }
+  document.getElementById('sizeStats').innerHTML = SIZES.map(s =>
+    `<div class="stat${sizes.includes(s) ? '' : ' off'}" style="--c:${SIZE_COLORS[s]}">` +
+    `<div class="lbl">Średni czas realizacji – ${s} (${sizeAvg[s].n} szt.)</div>` +
+    `<div class="val">${sizeAvg[s].avg == null ? '–' : `${fmtNum(sizeAvg[s].avg)} <small>dni</small>`}</div></div>`).join('');
+
+  // Remove selections that are no longer visible.
+  for (const id of [...selected]) {
+    const it = items.find(i => i.id === id);
+    if (!it || deleted.has(id) || !sizes.includes(it.size)) selected.delete(id);
+  }
 
   const datasets = [];
   for (const s of sizes) {
-    const pts = items.filter(i => i.size === s);
-    const colors = pts.map(i => inWindow(i) ? SIZE_COLORS[s] : SIZE_COLORS[s] + '33');
+    const pts = live.filter(i => i.size === s);
     datasets.push({
-      label: `Rozmiar ${s}`, type: 'scatter',
-      data: pts.map(i => ({ x: i.date, y: i.lead })),
-      backgroundColor: colors, borderColor: colors, pointRadius: 6, pointHoverRadius: 8
+      label: `Rozmiar ${s}`, type: 'scatter', size: s,
+      data: pts.map(i => ({ x: i.date, y: i.lead, id: i.id, manual: i.manual, inWin: inWindow(i) })),
+      backgroundColor: c => c.raw && !c.raw.inWin ? SIZE_COLORS[s] + '33' : SIZE_COLORS[s],
+      borderColor: c => c.raw && selected.has(c.raw.id) ? '#ffffff' : (c.raw && !c.raw.inWin ? SIZE_COLORS[s] + '33' : SIZE_COLORS[s]),
+      borderWidth: c => c.raw && selected.has(c.raw.id) ? 3 : 1,
+      pointRadius: c => c.raw && selected.has(c.raw.id) ? 8 : (c.raw && c.raw.manual ? 7 : 6),
+      pointStyle: c => c.raw && c.raw.manual ? 'triangle' : 'circle',
+      pointHoverRadius: 9
     });
   }
+  const line = (label, y, color, dash, width = 2) => ({
+    label, type: 'line', data: [{ x: from, y }, { x: to, y }],
+    borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: width, pointRadius: 0, pointHoverRadius: 0, fill: false
+  });
   for (const [k, lbl, c] of [['p50', '50%', '--p50'], ['p85', '85%', '--p85'], ['p95', '95%', '--p95']]) {
-    if (p[k] == null) continue;
-    datasets.push({
-      label: `${lbl}: ${Math.ceil(p[k])} dni`, type: 'line',
-      data: [{ x: from, y: p[k] }, { x: maxDate, y: p[k] }],
-      borderColor: css(c), backgroundColor: css(c), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false
-    });
+    if (p[k] != null) datasets.push(line(`${lbl}: ${Math.ceil(p[k])} dni`, p[k], css(c), [6, 4]));
+  }
+  if (document.getElementById('showAvg').checked) {
+    if (avg != null) datasets.push(line(`Średnia: ${fmtNum(avg)} dni`, avg, css('--avg'), [], 2.5));
+    for (const s of sizes) {
+      if (sizeAvg[s].avg != null) datasets.push(line(`Średnia ${s}: ${fmtNum(sizeAvg[s].avg)} dni`, sizeAvg[s].avg, SIZE_COLORS[s], [2, 3]));
+    }
   }
   chart.data.datasets = datasets;
   chart.update();
+
+  avgChart.data.labels = SIZES.map(s => `${s} (${sizeAvg[s].n})`);
+  avgChart.data.datasets = [{
+    label: 'Średni czas realizacji (dni)',
+    data: SIZES.map(s => sizeAvg[s].avg),
+    backgroundColor: SIZES.map(s => SIZE_COLORS[s] + (sizes.includes(s) ? 'cc' : '44')),
+    borderColor: SIZES.map(s => SIZE_COLORS[s]), borderWidth: 1
+  }];
+  avgChart.update();
+
+  renderSelection();
+  renderDeleted();
 }
 
-function initChart() {
+function renderSelection() {
+  const n = selected.size;
+  const del = document.getElementById('deleteSel');
+  del.textContent = `Usuń zaznaczone (${n})`;
+  del.disabled = !n;
+  document.getElementById('clearSel').disabled = !n;
+}
+
+function renderDeleted() {
+  const list = items.filter(i => deleted.has(i.id)).sort((a, b) => a.date - b.date);
+  document.getElementById('restoreAll').disabled = !list.length;
+  document.getElementById('deletedInfo').textContent = list.length ? `${list.length} usuniętych` : 'Brak usuniętych punktów.';
+  document.getElementById('deletedTable').innerHTML = list.length ?
+    '<tr><th>Data ukończenia</th><th>Rozmiar</th><th>LT (dni)</th><th>Źródło</th><th></th></tr>' +
+    list.map(i => `<tr><td>${fmtShort(i.date)}</td>` +
+      `<td><span class="dot" style="background:${SIZE_COLORS[i.size]}"></span> ${i.size}</td>` +
+      `<td>${fmtNum(i.lead)}</td><td>${i.manual ? 'ręcznie' : 'plik'}</td>` +
+      `<td><button type="button" data-restore="${i.id}">Przywróć</button></td></tr>`).join('') : '';
+}
+
+function deleteSelected() {
+  if (!selected.size) return;
+  for (const id of selected) deleted.add(id);
+  selected.clear();
+  saveState();
+  update();
+}
+
+function restore(ids) {
+  for (const id of ids) deleted.delete(id);
+  saveState();
+  update();
+}
+
+function initCharts() {
   Chart.defaults.color = css('--muted');
   Chart.defaults.borderColor = css('--border');
   chart = new Chart(document.getElementById('chart'), {
@@ -189,41 +402,156 @@ function initChart() {
       },
       plugins: {
         legend: { labels: { color: css('--text'), usePointStyle: true } },
-        tooltip: { callbacks: {
-          label: ctx => ctx.dataset.type === 'line' ? ctx.dataset.label
-            : `${ctx.dataset.label}: ${ctx.parsed.y} dni (${fmtDate(new Date(ctx.parsed.x))})`
-        } }
+        tooltip: {
+          filter: ctx => ctx.dataset.type !== 'line',
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} dni (${fmtDate(new Date(ctx.parsed.x))})` +
+              (ctx.raw.manual ? ' – dodany ręcznie' : '') + (selected.has(ctx.raw.id) ? ' – zaznaczony' : '')
+          }
+        }
       }
     }
+  });
+  avgChart = new Chart(document.getElementById('avgChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Dni' } } },
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `Średnio ${fmtNum(ctx.parsed.y)} dni` } } }
+    }
+  });
+}
+
+// Click toggles a point; dragging draws a rectangle that selects all visible points inside.
+function initSelection() {
+  const canvas = chart.canvas;
+  const rectEl = document.getElementById('selRect');
+  let start = null, additive = false;
+
+  const pos = e => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const pointsIn = (x1, y1, x2, y2) => {
+    const ids = [];
+    chart.data.datasets.forEach((ds, di) => {
+      if (ds.type !== 'scatter' || !chart.isDatasetVisible(di)) return;
+      chart.getDatasetMeta(di).data.forEach((el, k) => {
+        if (el.x >= x1 && el.x <= x2 && el.y >= y1 && el.y <= y2) ids.push(ds.data[k].id);
+      });
+    });
+    return ids;
+  };
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    start = pos(e); additive = e.shiftKey || e.ctrlKey || e.metaKey;
+  });
+  window.addEventListener('mousemove', e => {
+    if (!start) return;
+    const p = pos(e);
+    if (Math.abs(p.x - start.x) < 4 && Math.abs(p.y - start.y) < 4) return;
+    Object.assign(rectEl.style, {
+      display: 'block', left: Math.min(p.x, start.x) + 'px', top: Math.min(p.y, start.y) + 'px',
+      width: Math.abs(p.x - start.x) + 'px', height: Math.abs(p.y - start.y) + 'px'
+    });
+  });
+  window.addEventListener('mouseup', e => {
+    if (!start) return;
+    const p = pos(e), s = start;
+    start = null;
+    const dragged = rectEl.style.display === 'block';
+    rectEl.style.display = 'none';
+    if (dragged) {
+      if (!additive) selected.clear();
+      for (const id of pointsIn(Math.min(p.x, s.x), Math.min(p.y, s.y), Math.max(p.x, s.x), Math.max(p.y, s.y))) selected.add(id);
+    } else {
+      const hit = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, false)
+        .find(h => chart.data.datasets[h.datasetIndex].type === 'scatter');
+      if (!hit) return;
+      const id = chart.data.datasets[hit.datasetIndex].data[hit.index].id;
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+    }
+    chart.update('none');
+    renderSelection();
   });
 }
 
 function initControls() {
   const box = document.getElementById('sizes');
   for (const s of SIZES) {
-    const n = items.filter(i => i.size === s).length;
     box.insertAdjacentHTML('beforeend',
       `<label class="size-btn"><input type="checkbox" id="size-${s}" checked>` +
-      `<span class="dot" style="background:${SIZE_COLORS[s]}"></span>${s} <small style="color:var(--muted)">(${n})</small></label>`);
+      `<span class="dot" style="background:${SIZE_COLORS[s]}"></span>${s}</label>`);
+    document.getElementById('addSize').insertAdjacentHTML('beforeend', `<option value="${s}">${s}</option>`);
   }
   box.addEventListener('change', update);
 
-  // Slider steps by 3 months; the last step always covers the whole data range.
-  const span = Math.max(3, Math.ceil(monthsSpan(minDate, maxDate) / 3) * 3);
-  const slider = document.getElementById('period');
-  slider.max = span;
-  slider.value = span;
-  slider.addEventListener('input', update);
+  const [fromEl, toEl] = sliders();
+  fromEl.addEventListener('input', () => { if (+fromEl.value > +toEl.value) fromEl.value = toEl.value; update(); });
+  toEl.addEventListener('input', () => { if (+toEl.value < +fromEl.value) toEl.value = fromEl.value; update(); });
+
+  document.getElementById('presets').addEventListener('click', e => {
+    const m = e.target.dataset.months;
+    if (m === undefined) return;
+    toEl.value = toEl.max;
+    fromEl.value = +m ? Math.max(0, dayIndex(addMonths(maxDate, -m))) : 0;
+    update();
+  });
+
+  document.getElementById('showAvg').addEventListener('change', update);
+  document.getElementById('deleteSel').addEventListener('click', deleteSelected);
+  document.getElementById('clearSel').addEventListener('click', () => { selected.clear(); chart.update('none'); renderSelection(); });
+  document.addEventListener('keydown', e => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) deleteSelected();
+    if (e.key === 'Escape') { selected.clear(); chart.update('none'); renderSelection(); }
+  });
+
+  document.getElementById('restoreAll').addEventListener('click', () => restore([...deleted]));
+  document.getElementById('deletedTable').addEventListener('click', e => {
+    const id = e.target.dataset.restore;
+    if (id) restore([id]);
+  });
+
+  document.getElementById('addDate').value = isoDay(new Date());
+  document.getElementById('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const msg = document.getElementById('addMsg');
+    const size = document.getElementById('addSize').value;
+    const lead = Number(document.getElementById('addLead').value);
+    const [y, mo, d] = document.getElementById('addDate').value.split('-').map(Number);
+    if (!SIZES.includes(size) || !isFinite(lead) || lead < 0 || !y) {
+      msg.className = 'form-msg error';
+      msg.textContent = 'Podaj poprawny rozmiar, czas realizacji (≥ 0) i datę.';
+      return;
+    }
+    const date = new Date(y, mo - 1, d);
+    items.push({ id: `m:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`, date, size, lead, manual: true });
+    saveState();
+    refreshDomain();
+    update();
+    msg.className = 'form-msg muted';
+    msg.textContent = `Dodano: ${size}, ${fmtNum(lead)} dni, ${fmtDate(date)}.`;
+    document.getElementById('addLead').value = '';
+  });
 }
 
 (async () => {
   try {
-    items = await load();
+    const st = loadState();
+    let fileItems = [];
+    try { fileItems = await loadFile(); }
+    catch (e) {
+      if (!st.manual.length) throw e;
+      document.getElementById('msg').innerHTML = `<p class="error">${e.message}</p>`;
+    }
+    items = [...fileItems, ...st.manual];
     if (!items.length) throw new Error('Brak danych w pliku.');
-    minDate = new Date(Math.min(...items.map(i => i.date)));
-    maxDate = new Date(Math.max(...items.map(i => i.date)));
-    initChart();
+    const ids = new Set(items.map(i => i.id));
+    st.deleted.filter(id => ids.has(id)).forEach(id => deleted.add(id));
+    refreshDomain();
+    initCharts();
     initControls();
+    initSelection();
     update();
   } catch (e) {
     document.getElementById('msg').innerHTML = `<p class="error">${e.message}</p>`;
