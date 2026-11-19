@@ -52,6 +52,12 @@
   .stat .val small { font-size: .9rem; font-weight: 400; color: var(--muted); }
   .chart-box { position: relative; height: 520px; }
   .chart-box.small { height: 260px; }
+  .chart-box.mid { height: 340px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 16px; color: var(--muted); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .xmr-stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; font-size: .9rem; }
+  .xmr-stats b { font-size: 1.1rem; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
   .toolbar .hint { color: var(--muted); font-size: .85rem; margin-left: auto; }
   .toolbar label { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; cursor: pointer; }
@@ -110,13 +116,30 @@
   <section class="stats" id="sizeStats"></section>
 
   <section class="panel">
-    <div class="toolbar">
-      <label><input type="checkbox" id="showAvg" checked> Pokaż średnie na wykresie</label>
-      <button type="button" class="danger" id="deleteSel" disabled>Usuń zaznaczone (0)</button>
-      <button type="button" id="clearSel" disabled>Wyczyść zaznaczenie</button>
-      <span class="hint">Kliknij punkt, aby go zaznaczyć/odznaczyć. Przeciągnij, aby zaznaczyć obszar (Shift – dodaj do zaznaczenia). Delete – usuń.</span>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" role="tab" data-tab="scatter">Scatterplot</button>
+      <button type="button" class="tab" role="tab" data-tab="xmr">Wykres XmR</button>
     </div>
-    <div class="chart-box" id="chartBox"><canvas id="chart"></canvas><div id="selRect"></div></div>
+    <div class="view" id="view-scatter">
+      <div class="toolbar">
+        <label><input type="checkbox" id="showAvg" checked> Pokaż średnie na wykresie</label>
+        <button type="button" class="danger" id="deleteSel" disabled>Usuń zaznaczone (0)</button>
+        <button type="button" id="clearSel" disabled>Wyczyść zaznaczenie</button>
+        <span class="hint">Kliknij punkt, aby go zaznaczyć/odznaczyć. Przeciągnij, aby zaznaczyć obszar (Shift – dodaj do zaznaczenia). Delete – usuń.</span>
+      </div>
+      <div class="chart-box" id="chartBox"><canvas id="chart"></canvas><div id="selRect"></div></div>
+    </div>
+    <div class="view" id="view-xmr" hidden>
+      <div class="xmr-stats" id="xmrStats"></div>
+      <h2>X – czas realizacji kolejnych elementów (wg daty ukończenia)</h2>
+      <div class="chart-box mid"><canvas id="xChart"></canvas></div>
+      <h2 style="margin-top: 16px">MR – ruchomy rozstęp |X<sub>i</sub> − X<sub>i−1</sub>|</h2>
+      <div class="chart-box mid"><canvas id="mrChart"></canvas></div>
+      <p class="muted" style="font-size: .85rem; margin: 8px 0 0">
+        Metodologia Shewharta: X̄ ± 2,66 × MR̄ (granice naturalnego procesu), górna granica MR = 3,27 × MR̄ (dolna = 0, bo MR nie może być ujemny).
+        Dane: elementy wybranych rozmiarów z wybranego okresu, z pominięciem usuniętych. Punkty poza granicami są powiększone z białą obwódką.
+      </p>
+    </div>
     <div id="msg"></div>
   </section>
 
@@ -163,7 +186,7 @@ const MONTHS = {
 let items = [];               // all points: { id, date, size, lead, manual }
 const deleted = new Set();    // ids of removed points
 const selected = new Set();   // ids of points selected on the chart
-let chart, avgChart, minDate, maxDate;
+let chart, avgChart, xChart, mrChart, minDate, maxDate;
 
 function parseDate(v) {
   if (v instanceof Date) return v;
@@ -348,8 +371,86 @@ function update() {
   }];
   avgChart.update();
 
+  updateXmr([...used].sort((a, b) => a.date - b.date));
   renderSelection();
   renderDeleted();
+}
+
+const XMR_COLORS = { mean: '#e4e6eb', limit: '#f06292' };
+
+// Shewhart XmR: X̄ ± 2.66·MR̄ for individual values, URL = 3.27·MR̄ for moving ranges.
+function updateXmr(pts) {
+  const xs = pts.map(i => i.lead);
+  const mr = xs.slice(1).map((v, k) => Math.abs(v - xs[k]));
+  const xbar = mean(xs), mrbar = mean(mr);
+  const hasLimits = xbar != null && mrbar != null;
+  const unpl = hasLimits ? xbar + 2.66 * mrbar : null;
+  const lnpl = hasLimits ? xbar - 2.66 * mrbar : null;
+  const url = hasLimits ? 3.27 * mrbar : null;
+  const xOut = v => hasLimits && (v > unpl || v < lnpl);
+  const mrOut = v => hasLimits && v != null && v > url;
+  const mrData = [null, ...mr];
+
+  const signalsX = xs.filter(xOut).length, signalsMR = mr.filter(mrOut).length;
+  const f = v => v == null ? '–' : fmtNum(v);
+  document.getElementById('xmrStats').innerHTML = [
+    ['X̄ (średnia)', f(xbar)], ['MR̄ (średni MR)', f(mrbar)],
+    ['Górna granica X (X̄ + 2,66·MR̄)', f(unpl)], ['Dolna granica X (X̄ − 2,66·MR̄)', f(lnpl)],
+    ['Górna granica MR (3,27·MR̄)', f(url)],
+    ['Punkty poza granicami X / MR', `${signalsX} / ${signalsMR}`], ['Liczba punktów', xs.length]
+  ].map(([l, v]) => `<div><span class="muted">${l}:</span> <b>${v}</b></div>`).join('');
+
+  const labels = pts.map((_, k) => k + 1);
+  const pointStyle = (outFn, vals) => ({
+    pointBackgroundColor: pts.map(i => SIZE_COLORS[i.size]),
+    pointBorderColor: vals.map(v => outFn(v) ? '#ffffff' : 'transparent'),
+    pointBorderWidth: vals.map(v => outFn(v) ? 2 : 0),
+    pointRadius: vals.map(v => outFn(v) ? 7 : 4),
+    pointStyle: pts.map(i => i.manual ? 'triangle' : 'circle')
+  });
+  const hline = (label, y, color, dash) => ({
+    label: `${label}: ${fmtNum(y)}`, data: labels.map(() => y), isLimit: true,
+    borderColor: color, borderDash: dash, borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, fill: false
+  });
+
+  const xSets = [{ label: 'Czas realizacji (dni)', data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xOut, xs) }];
+  const mrSets = [{ label: 'MR (dni)', data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrOut, mrData) }];
+  if (hasLimits) {
+    xSets.push(hline('X̄', xbar, XMR_COLORS.mean, []), hline('Górna granica', unpl, XMR_COLORS.limit, [6, 4]), hline('Dolna granica', lnpl, XMR_COLORS.limit, [6, 4]));
+    mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('Górna granica', url, XMR_COLORS.limit, [6, 4]));
+  }
+  for (const [c, sets] of [[xChart, xSets], [mrChart, mrSets]]) {
+    c.data.labels = labels;
+    c.data.datasets = sets;
+    c.$pts = pts;
+    c.update();
+  }
+}
+
+function makeXmrChart(id, yTitle) {
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: 'nearest', intersect: true },
+      scales: {
+        x: { title: { display: true, text: 'Kolejny element (wg daty ukończenia)' },
+             ticks: { autoSkip: true, maxRotation: 0 } },
+        y: { title: { display: true, text: yTitle } }
+      },
+      plugins: {
+        legend: { labels: { color: css('--text'), usePointStyle: true, filter: l => l.datasetIndex > 0 } },
+        tooltip: {
+          filter: ctx => !ctx.dataset.isLimit,
+          callbacks: {
+            title: items => { const i = items[0].chart.$pts[items[0].dataIndex]; return i ? `#${items[0].dataIndex + 1} · ${fmtDate(i.date)}` : ''; },
+            label: ctx => { const i = ctx.chart.$pts[ctx.dataIndex]; return `Rozmiar ${i.size}: ${fmtNum(ctx.parsed.y)} dni` + (i.manual ? ' – dodany ręcznie' : ''); }
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderSelection() {
@@ -422,6 +523,8 @@ function initCharts() {
         tooltip: { callbacks: { label: ctx => `Średnio ${fmtNum(ctx.parsed.y)} dni` } } }
     }
   });
+  xChart = makeXmrChart('xChart', 'Czas realizacji (dni)');
+  mrChart = makeXmrChart('mrChart', 'MR (dni)');
 }
 
 // Click toggles a point; dragging draws a rectangle that selects all visible points inside.
@@ -499,6 +602,13 @@ function initControls() {
   });
 
   document.getElementById('showAvg').addEventListener('change', update);
+  document.querySelector('.tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + tab.dataset.tab; });
+    for (const c of [chart, xChart, mrChart]) c.resize();
+  });
   document.getElementById('deleteSel').addEventListener('click', deleteSelected);
   document.getElementById('clearSel').addEventListener('click', () => { selected.clear(); chart.update('none'); renderSelection(); });
   document.addEventListener('keydown', e => {
