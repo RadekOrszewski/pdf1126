@@ -1,1 +1,235 @@
-Test
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard – czasy realizacji 2024-25</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --border: #2a2f3d; --text: #e4e6eb; --muted: #8b92a5;
+    --s: #4fc3f7; --m: #ffb74d; --l: #ef5350;
+    --p50: #81c784; --p85: #ffd54f; --p95: #f06292;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 24px 32px 8px; }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; font-weight: 600; }
+  header p { margin: 0; color: var(--muted); }
+  main { padding: 16px 32px 32px; display: grid; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 32px; align-items: center; }
+  .controls .title { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+  .sizes { display: flex; gap: 8px; }
+  .size-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; user-select: none; }
+  .size-btn input { margin: 0; }
+  .size-btn .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .range-wrap { min-width: 320px; flex: 1; }
+  input[type=range] { width: 100%; accent-color: #7c8cff; }
+  .range-value { font-weight: 600; }
+  .range-sub { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; border-left: 4px solid var(--c); }
+  .stat .lbl { color: var(--muted); font-size: .85rem; }
+  .stat .val { font-size: 2rem; font-weight: 700; margin-top: 4px; }
+  .stat .val small { font-size: .9rem; font-weight: 400; color: var(--muted); }
+  .chart-box { position: relative; height: 520px; }
+  .error { color: var(--l); }
+  footer { color: var(--muted); font-size: .8rem; padding: 0 32px 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Czasy realizacji 2024-25</h1>
+  <p>Scatterplot czasów realizacji z percentylami (prognoza „w ciągu X dni”).</p>
+</header>
+<main>
+  <section class="panel controls">
+    <div>
+      <span class="title">Rozmiar</span>
+      <div class="sizes" id="sizes"></div>
+    </div>
+    <div class="range-wrap">
+      <label class="title" for="period">Okres do wyznaczenia prognozy</label>
+      <input type="range" id="period" min="3" max="3" step="3" value="3">
+      <div><span class="range-value" id="periodLabel"></span></div>
+      <div class="range-sub" id="periodSub"></div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat" style="--c: var(--p50)"><div class="lbl">50. percentyl</div><div class="val" id="p50">–</div></div>
+    <div class="stat" style="--c: var(--p85)"><div class="lbl">85. percentyl</div><div class="val" id="p85">–</div></div>
+    <div class="stat" style="--c: var(--p95)"><div class="lbl">95. percentyl</div><div class="val" id="p95">–</div></div>
+    <div class="stat" style="--c: #7c8cff"><div class="lbl">Liczba elementów</div><div class="val" id="count">–</div></div>
+  </section>
+
+  <section class="panel">
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+    <div id="msg"></div>
+  </section>
+</main>
+<footer>
+  Źródło: <code>Lead Times - 2024-25 (7).xlsx</code>. Okres liczony wstecz od najnowszej daty ukończenia.
+  Percentyle z interpolacją liniową (jak PERCENTYL.PRZEDZ.ZAMK w Excelu), zaokrąglone w górę do pełnych dni. Punkty poza wybranym okresem są wyszarzone.
+</footer>
+
+<script>
+const DATA_FILE = 'Lead Times - 2024-25 (7).xlsx';
+const SIZES = ['S', 'M', 'L'];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SIZE_COLORS = { S: css('--s'), M: css('--m'), L: css('--l') };
+const MONTHS = {
+  stycznia: 0, lutego: 1, marca: 2, kwietnia: 3, maja: 4, czerwca: 5, lipca: 6,
+  sierpnia: 7, września: 8, wrzesnia: 8, października: 9, pazdziernika: 9, listopada: 10, grudnia: 11
+};
+
+let items = [];
+let chart, minDate, maxDate;
+
+function parseDate(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400000)); // Excel serial date
+  if (typeof v !== 'string') return null;
+  const m = v.trim().match(/^(\d{1,2})\s+(\S+)\s+(\d{4})$/);
+  if (m) {
+    const month = MONTHS[m[2].toLowerCase()];
+    if (month !== undefined) return new Date(+m[3], month, +m[1]);
+  }
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+
+function percentile(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+const addMonths = (d, n) => { const r = new Date(d); r.setMonth(r.getMonth() + n); return r; };
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const fmtDate = d => d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+const monthsSpan = (a, b) => (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + (b.getDate() > a.getDate() ? 1 : 0);
+
+async function load() {
+  const res = await fetch(encodeURI(DATA_FILE));
+  if (!res.ok) throw new Error(`Nie udało się pobrać pliku ${DATA_FILE} (${res.status})`);
+  const wb = XLSX.read(await res.arrayBuffer(), { cellDates: true });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true });
+  const head = rows[0].map(h => String(h || '').toLowerCase());
+  const col = (re, def) => { const i = head.findIndex(h => re.test(h)); return i >= 0 ? i : def; };
+  const cDate = col(/data/, 0), cSize = col(/rozmiar/, 1), cLead = col(/czas/, 2);
+  return rows.slice(1).map(r => ({
+    date: parseDate(r[cDate]),
+    size: String(r[cSize] || '').trim().toUpperCase(),
+    lead: Number(r[cLead])
+  })).filter(r => r.date && SIZES.includes(r.size) && isFinite(r.lead));
+}
+
+const selectedSizes = () => SIZES.filter(s => document.getElementById('size-' + s).checked);
+
+function update() {
+  const sizes = selectedSizes();
+  const slider = document.getElementById('period');
+  const months = +slider.value;
+  const isAll = months >= +slider.max;
+  const from = isAll ? minDate : addMonths(maxDate, -months);
+
+  document.getElementById('periodLabel').textContent = isAll ? 'Cały okres' : `Ostatnie ${months} mies.`;
+  document.getElementById('periodSub').textContent = `${fmtDate(from)} – ${fmtDate(maxDate)}`;
+
+  const inWindow = i => i.date >= from && i.date <= maxDate;
+  const used = items.filter(i => sizes.includes(i.size) && inWindow(i));
+  const sorted = used.map(i => i.lead).sort((a, b) => a - b);
+  const p = { p50: percentile(sorted, .5), p85: percentile(sorted, .85), p95: percentile(sorted, .95) };
+
+  for (const k of Object.keys(p)) {
+    document.getElementById(k).innerHTML = p[k] == null ? '–' : `${Math.ceil(p[k])} <small>dni</small>`;
+  }
+  document.getElementById('count').textContent = used.length;
+
+  const datasets = [];
+  for (const s of sizes) {
+    const pts = items.filter(i => i.size === s);
+    const colors = pts.map(i => inWindow(i) ? SIZE_COLORS[s] : SIZE_COLORS[s] + '33');
+    datasets.push({
+      label: `Rozmiar ${s}`, type: 'scatter',
+      data: pts.map(i => ({ x: i.date, y: i.lead })),
+      backgroundColor: colors, borderColor: colors, pointRadius: 6, pointHoverRadius: 8
+    });
+  }
+  for (const [k, lbl, c] of [['p50', '50%', '--p50'], ['p85', '85%', '--p85'], ['p95', '95%', '--p95']]) {
+    if (p[k] == null) continue;
+    datasets.push({
+      label: `${lbl}: ${Math.ceil(p[k])} dni`, type: 'line',
+      data: [{ x: from, y: p[k] }, { x: maxDate, y: p[k] }],
+      borderColor: css(c), backgroundColor: css(c), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false
+    });
+  }
+  chart.data.datasets = datasets;
+  chart.update();
+}
+
+function initChart() {
+  Chart.defaults.color = css('--muted');
+  Chart.defaults.borderColor = css('--border');
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'scatter',
+    data: { datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      scales: {
+        x: { type: 'time', min: addDays(minDate, -7), max: addDays(maxDate, 7),
+             time: { unit: 'month', displayFormats: { month: 'MM.yyyy' }, tooltipFormat: 'dd.MM.yyyy' },
+             title: { display: true, text: 'Data ukończenia' } },
+        y: { beginAtZero: true, title: { display: true, text: 'Czas realizacji (dni)' } }
+      },
+      plugins: {
+        legend: { labels: { color: css('--text'), usePointStyle: true } },
+        tooltip: { callbacks: {
+          label: ctx => ctx.dataset.type === 'line' ? ctx.dataset.label
+            : `${ctx.dataset.label}: ${ctx.parsed.y} dni (${fmtDate(new Date(ctx.parsed.x))})`
+        } }
+      }
+    }
+  });
+}
+
+function initControls() {
+  const box = document.getElementById('sizes');
+  for (const s of SIZES) {
+    const n = items.filter(i => i.size === s).length;
+    box.insertAdjacentHTML('beforeend',
+      `<label class="size-btn"><input type="checkbox" id="size-${s}" checked>` +
+      `<span class="dot" style="background:${SIZE_COLORS[s]}"></span>${s} <small style="color:var(--muted)">(${n})</small></label>`);
+  }
+  box.addEventListener('change', update);
+
+  // Slider steps by 3 months; the last step always covers the whole data range.
+  const span = Math.max(3, Math.ceil(monthsSpan(minDate, maxDate) / 3) * 3);
+  const slider = document.getElementById('period');
+  slider.max = span;
+  slider.value = span;
+  slider.addEventListener('input', update);
+}
+
+(async () => {
+  try {
+    items = await load();
+    if (!items.length) throw new Error('Brak danych w pliku.');
+    minDate = new Date(Math.min(...items.map(i => i.date)));
+    maxDate = new Date(Math.max(...items.map(i => i.date)));
+    initChart();
+    initControls();
+    update();
+  } catch (e) {
+    document.getElementById('msg').innerHTML = `<p class="error">${e.message}</p>`;
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
