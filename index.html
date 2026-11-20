@@ -58,6 +58,8 @@
   .tab.active { color: var(--text); border-bottom-color: var(--accent); }
   .xmr-stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; font-size: .9rem; }
   .xmr-stats b { font-size: 1.1rem; }
+  .signal-legend { flex-basis: 100%; display: grid; gap: 4px; }
+  .signal-legend b { font-size: .9rem; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
   .toolbar .hint { color: var(--muted); font-size: .85rem; margin-left: auto; }
   .toolbar label { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; cursor: pointer; }
@@ -136,8 +138,9 @@
       <h2 style="margin-top: 16px">MR – ruchomy rozstęp |X<sub>i</sub> − X<sub>i−1</sub>|</h2>
       <div class="chart-box mid"><canvas id="mrChart"></canvas></div>
       <p class="muted" style="font-size: .85rem; margin: 8px 0 0">
-        Metodologia Shewharta: X̄ ± 2,66 × MR̄ (granice naturalnego procesu), górna granica MR = 3,27 × MR̄ (dolna = 0, bo MR nie może być ujemny).
-        Dane: elementy wybranych rozmiarów z wybranego okresu, z pominięciem usuniętych. Punkty poza granicami są powiększone z białą obwódką.
+        Metodologia Shewharta: X̄ ± 2,66 × MR̄ (UNPL/LNPL), URL = 3,27 × MR̄, LRL = 0 (MR nie może być ujemny).
+        Kropkowane linie wyznaczają 1/3 i 2/3 odległości od średniej do granic. Reguły 2 z 3, 3 z 5 i 8 z rzędu dotyczą punktów po tej samej stronie średniej.
+        Dane: elementy wybranych rozmiarów z wybranego okresu, z pominięciem usuniętych, wg daty ukończenia. Szare punkty – brak sygnału.
       </p>
     </div>
     <div id="msg"></div>
@@ -376,9 +379,45 @@ function update() {
   renderDeleted();
 }
 
-const XMR_COLORS = { mean: '#e4e6eb', limit: '#f06292' };
+const XMR_COLORS = { mean: '#e4e6eb', limit: '#f06292', zone: '#5c6378', point: '#8b92a5' };
+// Ordered by priority – a point with several signals is drawn in the colour of the strongest one.
+const SIGNALS = [
+  { key: 'out',   color: '#ff1744', name: 'Silny sygnał',             desc: 'punkt poza granicami' },
+  { key: 'two3',  color: '#ff9100', name: 'Umiarkowany sygnał',       desc: '2 z 3 kolejnych punktów za 2/3 odległości średnia–granica (po tej samej stronie)' },
+  { key: 'three5',color: '#ffea00', name: 'Umiarkowany stały sygnał', desc: '3 z 5 kolejnych punktów za 1/3 odległości średnia–granica (po tej samej stronie)' },
+  { key: 'run8',  color: '#b388ff', name: 'Sygnał do zmiany prognozy', desc: '8 kolejnych punktów po jednej stronie średniej' }
+];
 
-// Shewhart XmR: X̄ ± 2.66·MR̄ for individual values, URL = 3.27·MR̄ for moving ranges.
+// Returns, for every value, the set of detected signal keys.
+function detectSignals(vals, center, upper, lower) {
+  const sig = vals.map(() => new Set());
+  const up = (v, frac) => v > center + frac * (upper - center);
+  const down = (v, frac) => v < center - frac * (center - lower);
+  vals.forEach((v, i) => { if (v > upper || v < lower) sig[i].add('out'); });
+  const windowRule = (key, size, need, frac) => {
+    for (let s = 0; s + size <= vals.length; s++) {
+      const w = vals.slice(s, s + size).map((v, k) => [v, s + k]);
+      for (const test of [up, down]) {
+        const hits = w.filter(([v]) => test(v, frac));
+        if (hits.length >= need) hits.forEach(([, i]) => sig[i].add(key));
+      }
+    }
+  };
+  windowRule('two3', 3, 2, 2 / 3);
+  windowRule('three5', 5, 3, 1 / 3);
+  let start = 0;
+  for (let i = 1; i <= vals.length; i++) {
+    const side = v => Math.sign(v - center);
+    if (i === vals.length || side(vals[i]) !== side(vals[start]) || side(vals[i]) === 0) {
+      if (side(vals[start]) !== 0 && i - start >= 8) for (let k = start; k < i; k++) sig[k].add('run8');
+      start = i;
+    }
+  }
+  return sig;
+}
+const topSignal = set => SIGNALS.find(s => set && set.has(s.key));
+
+// Shewhart XmR: X̄ ± 2.66·MR̄ for individual values, URL = 3.27·MR̄ (LRL = 0) for moving ranges.
 function updateXmr(pts) {
   const xs = pts.map(i => i.lead);
   const mr = xs.slice(1).map((v, k) => Math.abs(v - xs[k]));
@@ -386,43 +425,54 @@ function updateXmr(pts) {
   const hasLimits = xbar != null && mrbar != null;
   const unpl = hasLimits ? xbar + 2.66 * mrbar : null;
   const lnpl = hasLimits ? xbar - 2.66 * mrbar : null;
-  const url = hasLimits ? 3.27 * mrbar : null;
-  const xOut = v => hasLimits && (v > unpl || v < lnpl);
-  const mrOut = v => hasLimits && v != null && v > url;
+  const url = hasLimits ? 3.27 * mrbar : null, lrl = 0;
+  const xSig = hasLimits ? detectSignals(xs, xbar, unpl, lnpl) : xs.map(() => new Set());
+  const mrSig = [null, ...(hasLimits ? detectSignals(mr, mrbar, url, lrl) : mr.map(() => new Set()))];
   const mrData = [null, ...mr];
 
-  const signalsX = xs.filter(xOut).length, signalsMR = mr.filter(mrOut).length;
+  const count = (sigs, key) => sigs.filter(s => s && s.has(key)).length;
   const f = v => v == null ? '–' : fmtNum(v);
   document.getElementById('xmrStats').innerHTML = [
     ['X̄ (średnia)', f(xbar)], ['MR̄ (średni MR)', f(mrbar)],
-    ['Górna granica X (X̄ + 2,66·MR̄)', f(unpl)], ['Dolna granica X (X̄ − 2,66·MR̄)', f(lnpl)],
-    ['Górna granica MR (3,27·MR̄)', f(url)],
-    ['Punkty poza granicami X / MR', `${signalsX} / ${signalsMR}`], ['Liczba punktów', xs.length]
-  ].map(([l, v]) => `<div><span class="muted">${l}:</span> <b>${v}</b></div>`).join('');
+    ['UNPL (X̄ + 2,66·MR̄)', f(unpl)], ['LNPL (X̄ − 2,66·MR̄)', f(lnpl)],
+    ['URL (3,27·MR̄)', f(url)], ['LRL', f(hasLimits ? lrl : null)], ['Liczba punktów', xs.length]
+  ].map(([l, v]) => `<div><span class="muted">${l}:</span> <b>${v}</b></div>`).join('') +
+  '<div class="signal-legend">' + SIGNALS.map(s =>
+    `<div title="${s.desc}"><span class="dot" style="background:${s.color}"></span> ${s.name} ` +
+    `<span class="muted">(${s.desc})</span>: <b>X ${count(xSig, s.key)} / MR ${count(mrSig, s.key)}</b></div>`).join('') + '</div>';
 
   const labels = pts.map((_, k) => k + 1);
-  const pointStyle = (outFn, vals) => ({
-    pointBackgroundColor: pts.map(i => SIZE_COLORS[i.size]),
-    pointBorderColor: vals.map(v => outFn(v) ? '#ffffff' : 'transparent'),
-    pointBorderWidth: vals.map(v => outFn(v) ? 2 : 0),
-    pointRadius: vals.map(v => outFn(v) ? 7 : 4),
-    pointStyle: pts.map(i => i.manual ? 'triangle' : 'circle')
+  const pointStyle = sigs => {
+    const top = sigs.map(topSignal);
+    return {
+      pointBackgroundColor: top.map(t => t ? t.color : XMR_COLORS.point),
+      pointBorderColor: top.map(t => t ? '#ffffff' : 'transparent'),
+      pointBorderWidth: top.map(t => t ? 1.5 : 0),
+      pointRadius: top.map(t => t ? 6 : 3.5),
+      pointHoverRadius: 8,
+      pointStyle: pts.map(i => i.manual ? 'triangle' : 'circle')
+    };
+  };
+  const hline = (label, y, color, dash, width = 2, legend = true) => ({
+    label: legend ? `${label}: ${fmtNum(y)}` : label, data: labels.map(() => y), isLimit: true, noLegend: !legend,
+    borderColor: color, borderDash: dash, borderWidth: width, pointRadius: 0, pointHoverRadius: 0, fill: false
   });
-  const hline = (label, y, color, dash) => ({
-    label: `${label}: ${fmtNum(y)}`, data: labels.map(() => y), isLimit: true,
-    borderColor: color, borderDash: dash, borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, fill: false
-  });
+  const zones = (c, hi, lo) => [1 / 3, 2 / 3].flatMap(fr => [
+    hline('', c + fr * (hi - c), XMR_COLORS.zone, [2, 4], 1, false),
+    hline('', c - fr * (c - lo), XMR_COLORS.zone, [2, 4], 1, false)
+  ]);
 
-  const xSets = [{ label: 'Czas realizacji (dni)', data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xOut, xs) }];
-  const mrSets = [{ label: 'MR (dni)', data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrOut, mrData) }];
+  const xSets = [{ label: 'Czas realizacji (dni)', data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xSig) }];
+  const mrSets = [{ label: 'MR (dni)', data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrSig) }];
   if (hasLimits) {
-    xSets.push(hline('X̄', xbar, XMR_COLORS.mean, []), hline('Górna granica', unpl, XMR_COLORS.limit, [6, 4]), hline('Dolna granica', lnpl, XMR_COLORS.limit, [6, 4]));
-    mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('Górna granica', url, XMR_COLORS.limit, [6, 4]));
+    xSets.push(hline('X̄', xbar, XMR_COLORS.mean, []), hline('UNPL', unpl, XMR_COLORS.limit, [6, 4]), hline('LNPL', lnpl, XMR_COLORS.limit, [6, 4]), ...zones(xbar, unpl, lnpl));
+    mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('URL', url, XMR_COLORS.limit, [6, 4]), hline('LRL', lrl, XMR_COLORS.limit, [6, 4]), ...zones(mrbar, url, lrl));
   }
-  for (const [c, sets] of [[xChart, xSets], [mrChart, mrSets]]) {
+  for (const [c, sets, sigs] of [[xChart, xSets, xSig], [mrChart, mrSets, mrSig]]) {
     c.data.labels = labels;
     c.data.datasets = sets;
     c.$pts = pts;
+    c.$sig = sigs;
     c.update();
   }
 }
@@ -440,12 +490,13 @@ function makeXmrChart(id, yTitle) {
         y: { title: { display: true, text: yTitle } }
       },
       plugins: {
-        legend: { labels: { color: css('--text'), usePointStyle: true, filter: l => l.datasetIndex > 0 } },
+        legend: { labels: { color: css('--text'), usePointStyle: true, filter: (l, d) => l.datasetIndex > 0 && !d.datasets[l.datasetIndex].noLegend } },
         tooltip: {
           filter: ctx => !ctx.dataset.isLimit,
           callbacks: {
             title: items => { const i = items[0].chart.$pts[items[0].dataIndex]; return i ? `#${items[0].dataIndex + 1} · ${fmtDate(i.date)}` : ''; },
-            label: ctx => { const i = ctx.chart.$pts[ctx.dataIndex]; return `Rozmiar ${i.size}: ${fmtNum(ctx.parsed.y)} dni` + (i.manual ? ' – dodany ręcznie' : ''); }
+            label: ctx => { const i = ctx.chart.$pts[ctx.dataIndex]; return `Rozmiar ${i.size}: ${fmtNum(ctx.parsed.y)} dni` + (i.manual ? ' – dodany ręcznie' : ''); },
+            afterLabel: ctx => SIGNALS.filter(s => ctx.chart.$sig[ctx.dataIndex]?.has(s.key)).map(s => `● ${s.name}: ${s.desc}`)
           }
         }
       }
