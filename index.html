@@ -139,7 +139,7 @@
       <div class="chart-box mid"><canvas id="mrChart"></canvas></div>
       <p class="muted" style="font-size: .85rem; margin: 8px 0 0">
         Metodologia Shewharta: X̄ ± 2,66 × MR̄ (UNPL/LNPL), URL = 3,27 × MR̄, LRL = 0 (MR nie może być ujemny).
-        Kropkowane linie wyznaczają 1/3 i 2/3 odległości od średniej do granic. Reguły 2 z 3, 3 z 5 i 8 z rzędu dotyczą punktów po tej samej stronie średniej.
+        Kropkowane linie wyznaczają 1/3 i 2/3 odległości od średniej do granic. Reguły 2 z 3, 3 z 5 i 8 z rzędu dotyczą punktów po tej samej stronie średniej; na wykresie MR sygnały wykrywane są tylko powyżej średniej (wzrost zmienności).
         Dane: elementy wybranych rozmiarów z wybranego okresu, z pominięciem usuniętych, wg daty ukończenia. Szare punkty – brak sygnału.
       </p>
     </div>
@@ -389,15 +389,15 @@ const SIGNALS = [
 ];
 
 // Returns, for every value, the set of detected signal keys.
-function detectSignals(vals, center, upper, lower) {
+function detectSignals(vals, center, upper, lower, upperOnly = false) {
   const sig = vals.map(() => new Set());
   const up = (v, frac) => v > center + frac * (upper - center);
   const down = (v, frac) => v < center - frac * (center - lower);
-  vals.forEach((v, i) => { if (v > upper || v < lower) sig[i].add('out'); });
+  vals.forEach((v, i) => { if (v > upper || (!upperOnly && v < lower)) sig[i].add('out'); });
   const windowRule = (key, size, need, frac) => {
     for (let s = 0; s + size <= vals.length; s++) {
       const w = vals.slice(s, s + size).map((v, k) => [v, s + k]);
-      for (const test of [up, down]) {
+      for (const test of upperOnly ? [up] : [up, down]) {
         const hits = w.filter(([v]) => test(v, frac));
         if (hits.length >= need) hits.forEach(([, i]) => sig[i].add(key));
       }
@@ -409,7 +409,8 @@ function detectSignals(vals, center, upper, lower) {
   for (let i = 1; i <= vals.length; i++) {
     const side = v => Math.sign(v - center);
     if (i === vals.length || side(vals[i]) !== side(vals[start]) || side(vals[i]) === 0) {
-      if (side(vals[start]) !== 0 && i - start >= 8) for (let k = start; k < i; k++) sig[k].add('run8');
+      const s0 = side(vals[start]);
+      if ((s0 > 0 || (s0 < 0 && !upperOnly)) && i - start >= 8) for (let k = start; k < i; k++) sig[k].add('run8');
       start = i;
     }
   }
@@ -427,7 +428,7 @@ function updateXmr(pts) {
   const lnpl = hasLimits ? xbar - 2.66 * mrbar : null;
   const url = hasLimits ? 3.27 * mrbar : null, lrl = 0;
   const xSig = hasLimits ? detectSignals(xs, xbar, unpl, lnpl) : xs.map(() => new Set());
-  const mrSig = [null, ...(hasLimits ? detectSignals(mr, mrbar, url, lrl) : mr.map(() => new Set()))];
+  const mrSig = [null, ...(hasLimits ? detectSignals(mr, mrbar, url, lrl, true) : mr.map(() => new Set()))];
   const mrData = [null, ...mr];
 
   const count = (sigs, key) => sigs.filter(s => s && s.has(key)).length;
@@ -459,14 +460,14 @@ function updateXmr(pts) {
   });
   const zones = (c, hi, lo) => [1 / 3, 2 / 3].flatMap(fr => [
     hline('', c + fr * (hi - c), XMR_COLORS.zone, [2, 4], 1, false),
-    hline('', c - fr * (c - lo), XMR_COLORS.zone, [2, 4], 1, false)
+    ...(lo == null ? [] : [hline('', c - fr * (c - lo), XMR_COLORS.zone, [2, 4], 1, false)])
   ]);
 
   const xSets = [{ label: 'Czas realizacji (dni)', data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xSig) }];
   const mrSets = [{ label: 'MR (dni)', data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrSig) }];
   if (hasLimits) {
     xSets.push(hline('X̄', xbar, XMR_COLORS.mean, []), hline('UNPL', unpl, XMR_COLORS.limit, [6, 4]), hline('LNPL', lnpl, XMR_COLORS.limit, [6, 4]), ...zones(xbar, unpl, lnpl));
-    mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('URL', url, XMR_COLORS.limit, [6, 4]), hline('LRL', lrl, XMR_COLORS.limit, [6, 4]), ...zones(mrbar, url, lrl));
+    mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('URL', url, XMR_COLORS.limit, [6, 4]), hline('LRL', lrl, XMR_COLORS.limit, [6, 4]), ...zones(mrbar, url, null));
   }
   for (const [c, sets, sigs] of [[xChart, xSets, xSig], [mrChart, mrSets, mrSig]]) {
     c.data.labels = labels;
