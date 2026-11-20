@@ -121,6 +121,7 @@
     <div class="tabs" role="tablist">
       <button type="button" class="tab active" role="tab" data-tab="scatter">Scatterplot</button>
       <button type="button" class="tab" role="tab" data-tab="xmr">Wykres XmR</button>
+      <button type="button" class="tab" role="tab" data-tab="tp">Tempo dostarczania</button>
     </div>
     <div class="view" id="view-scatter">
       <div class="toolbar">
@@ -142,6 +143,19 @@
         Kropkowane linie wyznaczają 1/3 i 2/3 odległości od średniej do granic. Reguły 2 z 3, 3 z 5 i 8 z rzędu dotyczą punktów po tej samej stronie średniej; na wykresie MR sygnały wykrywane są tylko powyżej średniej (wzrost zmienności).
         Dane: elementy wybranych rozmiarów z wybranego okresu, z pominięciem usuniętych, wg daty ukończenia. Szare punkty – brak sygnału.
       </p>
+    </div>
+    <div class="view" id="view-tp" hidden>
+      <div class="xmr-stats" id="tpStats"></div>
+      <h2>X – dzienna przepustowość (liczba dostarczonych elementów)</h2>
+      <div class="chart-box mid"><canvas id="tpXChart"></canvas></div>
+      <h2 style="margin-top: 16px">MR – ruchomy rozstęp |X<sub>i</sub> − X<sub>i−1</sub>|</h2>
+      <div class="chart-box mid"><canvas id="tpMrChart"></canvas></div>
+      <p class="muted" style="font-size: .85rem; margin: 8px 0 0">
+        Metodologia Shewharta i reguły sygnałów jak na wykresie XmR czasów realizacji: X̄ ± 2,66 × MR̄ (UNPL/LNPL), URL = 3,27 × MR̄, LRL = 0.
+        Dane: <code>Throughput Daily (8).xlsx</code> – wszystkie dni z pliku w kolejności chronologicznej (filtry rozmiaru i okresu nie mają tu zastosowania).
+        LNPL ujemny oznacza, że dni bez dostaw (0) mieszczą się w naturalnej zmienności procesu. Szare punkty – brak sygnału.
+      </p>
+      <div id="tpMsg"></div>
     </div>
     <div id="msg"></div>
   </section>
@@ -170,12 +184,13 @@
   </section>
 </main>
 <footer>
-  Źródło: <code>Lead Times - 2024-25 (7).xlsx</code> + punkty dodane ręcznie (▲). Ręczne zmiany (dodane i usunięte punkty) są zapisywane w przeglądarce.
+  Źródło: <code>Lead Times - 2024-25 (7).xlsx</code> + punkty dodane ręcznie (▲); tempo dostarczania: <code>Throughput Daily (8).xlsx</code>. Ręczne zmiany (dodane i usunięte punkty) są zapisywane w przeglądarce.
   Percentyle z interpolacją liniową (jak PERCENTYL.PRZEDZ.ZAMK w Excelu), zaokrąglone w górę do pełnych dni. Punkty poza wybranym okresem są wyszarzone.
 </footer>
 
 <script>
 const DATA_FILE = 'Lead Times - 2024-25 (7).xlsx';
+const THROUGHPUT_FILE = 'Throughput Daily (8).xlsx';
 const STORAGE_KEY = 'lt-dashboard-v1';
 const SIZES = ['S', 'M', 'L'];
 const DAY = 86400000;
@@ -189,7 +204,8 @@ const MONTHS = {
 let items = [];               // all points: { id, date, size, lead, manual }
 const deleted = new Set();    // ids of removed points
 const selected = new Set();   // ids of points selected on the chart
-let chart, avgChart, xChart, mrChart, minDate, maxDate;
+let throughput = [];          // daily delivery rate: { date, count }
+let chart, avgChart, xChart, mrChart, tpXChart, tpMrChart, minDate, maxDate;
 
 function parseDate(v) {
   if (v instanceof Date) return v;
@@ -241,6 +257,29 @@ async function loadFile() {
     seen[key] = (seen[key] || 0) + 1;
     return { ...r, id: `${key}:${seen[key]}`, manual: false };
   });
+}
+
+async function loadThroughput() {
+  const res = await fetch(encodeURI(THROUGHPUT_FILE));
+  if (!res.ok) throw new Error(`Nie udało się pobrać pliku ${THROUGHPUT_FILE} (${res.status})`);
+  const wb = XLSX.read(await res.arrayBuffer());
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true });
+  const head = rows[0].map(h => String(h || '').toLowerCase());
+  const col = (re, def) => { const i = head.findIndex(h => re.test(h)); return i >= 0 ? i : def; };
+  // Excel serial → local calendar day (avoids timezone shifts).
+  const toDay = v => {
+    if (typeof v !== 'number') return parseDate(v);
+    const u = new Date(Math.round((v - 25569) * DAY));
+    return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
+  };
+  const cDate = col(/data/, 0), cCount = col(/przepustowo|throughput/, 1);
+  const data = rows.slice(1)
+    .map(r => ({ date: toDay(r[cDate]), count: r[cCount] == null || r[cCount] === '' ? NaN : Number(r[cCount]) }))
+    .filter(r => r.date && isFinite(r.count))
+    .map(r => ({ ...r, date: startOfDay(r.date) }))
+    .sort((a, b) => a.date - b.date);
+  if (!data.length) throw new Error(`Brak danych w pliku ${THROUGHPUT_FILE}.`);
+  return data;
 }
 
 function loadState() {
@@ -419,8 +458,9 @@ function detectSignals(vals, center, upper, lower, upperOnly = false) {
 const topSignal = set => SIGNALS.find(s => set && set.has(s.key));
 
 // Shewhart XmR: X̄ ± 2.66·MR̄ for individual values, URL = 3.27·MR̄ (LRL = 0) for moving ranges.
-function updateXmr(pts) {
-  const xs = pts.map(i => i.lead);
+// pts – points in chronological order; value(p) – plotted value; labelOf(p, k) – x-axis label.
+function renderXmr({ xChart, mrChart, statsEl, pts, value, labelOf, xLabel, mrLabel, pointShape = () => 'circle' }) {
+  const xs = pts.map(value);
   const mr = xs.slice(1).map((v, k) => Math.abs(v - xs[k]));
   const xbar = mean(xs), mrbar = mean(mr);
   const hasLimits = xbar != null && mrbar != null;
@@ -433,7 +473,7 @@ function updateXmr(pts) {
 
   const count = (sigs, key) => sigs.filter(s => s && s.has(key)).length;
   const f = v => v == null ? '–' : fmtNum(v);
-  document.getElementById('xmrStats').innerHTML = [
+  statsEl.innerHTML = [
     ['X̄ (średnia)', f(xbar)], ['MR̄ (średni MR)', f(mrbar)],
     ['UNPL (X̄ + 2,66·MR̄)', f(unpl)], ['LNPL (X̄ − 2,66·MR̄)', f(lnpl)],
     ['URL (3,27·MR̄)', f(url)], ['LRL', f(hasLimits ? lrl : null)], ['Liczba punktów', xs.length]
@@ -442,7 +482,7 @@ function updateXmr(pts) {
     `<div title="${s.desc}"><span class="dot" style="background:${s.color}"></span> ${s.name} ` +
     `<span class="muted">(${s.desc})</span>: <b>X ${count(xSig, s.key)} / MR ${count(mrSig, s.key)}</b></div>`).join('') + '</div>';
 
-  const labels = pts.map((_, k) => k + 1);
+  const labels = pts.map(labelOf);
   const pointStyle = sigs => {
     const top = sigs.map(topSignal);
     return {
@@ -451,7 +491,7 @@ function updateXmr(pts) {
       pointBorderWidth: top.map(t => t ? 1.5 : 0),
       pointRadius: top.map(t => t ? 6 : 3.5),
       pointHoverRadius: 8,
-      pointStyle: pts.map(i => i.manual ? 'triangle' : 'circle')
+      pointStyle: pts.map(pointShape)
     };
   };
   const hline = (label, y, color, dash, width = 2, legend = true) => ({
@@ -463,8 +503,8 @@ function updateXmr(pts) {
     ...(lo == null ? [] : [hline('', c - fr * (c - lo), XMR_COLORS.zone, [2, 4], 1, false)])
   ]);
 
-  const xSets = [{ label: 'Czas realizacji (dni)', data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xSig) }];
-  const mrSets = [{ label: 'MR (dni)', data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrSig) }];
+  const xSets = [{ label: xLabel, data: xs, borderColor: '#5c6378', borderWidth: 1.5, ...pointStyle(xSig) }];
+  const mrSets = [{ label: mrLabel, data: mrData, borderColor: '#5c6378', borderWidth: 1.5, spanGaps: false, ...pointStyle(mrSig) }];
   if (hasLimits) {
     xSets.push(hline('X̄', xbar, XMR_COLORS.mean, []), hline('UNPL', unpl, XMR_COLORS.limit, [6, 4]), hline('LNPL', lnpl, XMR_COLORS.limit, [6, 4]), ...zones(xbar, unpl, lnpl));
     mrSets.push(hline('MR̄', mrbar, XMR_COLORS.mean, []), hline('URL', url, XMR_COLORS.limit, [6, 4]), hline('LRL', lrl, XMR_COLORS.limit, [6, 4]), ...zones(mrbar, url, null));
@@ -478,7 +518,29 @@ function updateXmr(pts) {
   }
 }
 
-function makeXmrChart(id, yTitle) {
+function updateXmr(pts) {
+  renderXmr({
+    xChart, mrChart, statsEl: document.getElementById('xmrStats'), pts,
+    value: i => i.lead, labelOf: (_, k) => k + 1,
+    xLabel: 'Czas realizacji (dni)', mrLabel: 'MR (dni)', pointShape: i => i.manual ? 'triangle' : 'circle'
+  });
+}
+
+function updateThroughput() {
+  renderXmr({
+    xChart: tpXChart, mrChart: tpMrChart, statsEl: document.getElementById('tpStats'), pts: throughput,
+    value: d => d.count, labelOf: d => fmtShort(d.date),
+    xLabel: 'Przepustowość (elementy/dzień)', mrLabel: 'MR (elementy)'
+  });
+}
+
+// opts: xTitle – x-axis title; title(p, k) – tooltip title; label(p, y) – tooltip line.
+function makeXmrChart(id, yTitle, opts = {}) {
+  const {
+    xTitle = 'Kolejny element (wg daty ukończenia)',
+    title = (i, k) => `#${k + 1} · ${fmtDate(i.date)}`,
+    label = (i, y) => `Rozmiar ${i.size}: ${fmtNum(y)} dni` + (i.manual ? ' – dodany ręcznie' : '')
+  } = opts;
   return new Chart(document.getElementById(id), {
     type: 'line',
     data: { labels: [], datasets: [] },
@@ -486,7 +548,7 @@ function makeXmrChart(id, yTitle) {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
       interaction: { mode: 'nearest', intersect: true },
       scales: {
-        x: { title: { display: true, text: 'Kolejny element (wg daty ukończenia)' },
+        x: { title: { display: true, text: xTitle },
              ticks: { autoSkip: true, maxRotation: 0 } },
         y: { title: { display: true, text: yTitle } }
       },
@@ -495,8 +557,8 @@ function makeXmrChart(id, yTitle) {
         tooltip: {
           filter: ctx => !ctx.dataset.isLimit,
           callbacks: {
-            title: items => { const i = items[0].chart.$pts[items[0].dataIndex]; return i ? `#${items[0].dataIndex + 1} · ${fmtDate(i.date)}` : ''; },
-            label: ctx => { const i = ctx.chart.$pts[ctx.dataIndex]; return `Rozmiar ${i.size}: ${fmtNum(ctx.parsed.y)} dni` + (i.manual ? ' – dodany ręcznie' : ''); },
+            title: items => { const i = items[0].chart.$pts[items[0].dataIndex]; return i ? title(i, items[0].dataIndex) : ''; },
+            label: ctx => label(ctx.chart.$pts[ctx.dataIndex], ctx.parsed.y),
             afterLabel: ctx => SIGNALS.filter(s => ctx.chart.$sig[ctx.dataIndex]?.has(s.key)).map(s => `● ${s.name}: ${s.desc}`)
           }
         }
@@ -577,6 +639,9 @@ function initCharts() {
   });
   xChart = makeXmrChart('xChart', 'Czas realizacji (dni)');
   mrChart = makeXmrChart('mrChart', 'MR (dni)');
+  const tpOpts = { xTitle: 'Dzień', title: d => fmtDate(d.date) };
+  tpXChart = makeXmrChart('tpXChart', 'Elementy / dzień', { ...tpOpts, label: (d, y) => `Przepustowość: ${fmtNum(y)} elem.` });
+  tpMrChart = makeXmrChart('tpMrChart', 'MR (elementy)', { ...tpOpts, label: (d, y) => `MR: ${fmtNum(y)} elem.` });
 }
 
 // Click toggles a point; dragging draws a rectangle that selects all visible points inside.
@@ -659,7 +724,7 @@ function initControls() {
     if (!tab) return;
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + tab.dataset.tab; });
-    for (const c of [chart, xChart, mrChart]) c.resize();
+    for (const c of [chart, xChart, mrChart, tpXChart, tpMrChart]) c.resize();
   });
   document.getElementById('deleteSel').addEventListener('click', deleteSelected);
   document.getElementById('clearSel').addEventListener('click', () => { selected.clear(); chart.update('none'); renderSelection(); });
@@ -715,6 +780,8 @@ function initControls() {
     initControls();
     initSelection();
     update();
+    loadThroughput().then(data => { throughput = data; updateThroughput(); })
+      .catch(e => { document.getElementById('tpMsg').innerHTML = `<p class="error">${e.message}</p>`; console.error(e); });
   } catch (e) {
     document.getElementById('msg').innerHTML = `<p class="error">${e.message}</p>`;
     console.error(e);
